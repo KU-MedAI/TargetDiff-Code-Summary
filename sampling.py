@@ -89,7 +89,7 @@ def is_aromatic_from_index(index):
 # ──────────────────────────────────────────────
 
 def sample_diffusion_ligand(model, data, num_samples, batch_size=16, device='cuda:0',
-                            num_steps=None, center_pos_mode='protein',
+                            num_steps=None, pos_only=False, center_pos_mode='protein',
                             sample_num_atoms='prior'):
     all_pred_pos, all_pred_v = [], []
     all_pred_pos_traj, all_pred_v_traj = [], []
@@ -123,8 +123,11 @@ def sample_diffusion_ligand(model, data, num_samples, batch_size=16, device='cud
             batch_center_pos = center_pos[batch_ligand]
             init_ligand_pos = batch_center_pos + torch.randn_like(batch_center_pos)
 
-            uniform_logits = torch.zeros(len(batch_ligand), model.num_classes).to(device)
-            init_ligand_v = log_sample_categorical(uniform_logits)
+            if pos_only:
+                init_ligand_v = batch.ligand_atom_feature_full
+            else:
+                uniform_logits = torch.zeros(len(batch_ligand), model.num_classes).to(device)
+                init_ligand_v = log_sample_categorical(uniform_logits)
 
             r = model.sample_diffusion(
                 protein_pos=batch.protein_pos,
@@ -134,6 +137,7 @@ def sample_diffusion_ligand(model, data, num_samples, batch_size=16, device='cud
                 init_ligand_v=init_ligand_v,
                 batch_ligand=batch_ligand,
                 num_steps=num_steps,
+                pos_only=pos_only,
                 center_pos_mode=center_pos_mode,
             )
             ligand_pos = r['pos']
@@ -166,20 +170,21 @@ def sample_diffusion_ligand(model, data, num_samples, batch_size=16, device='cud
             all_step_v = [np.stack(sv) for sv in all_step_v]
             all_pred_v_traj += all_step_v
 
-            # unbatch v0/vt traj
-            all_step_v0 = [[] for _ in range(n_data)]
-            for v0 in r['v0_traj']:
-                v0_arr = v0.cpu().numpy()
-                for k in range(n_data):
-                    all_step_v0[k].append(v0_arr[ligand_cum_atoms[k]:ligand_cum_atoms[k + 1]])
-            all_pred_v0_traj += [np.stack(sv) for sv in all_step_v0]
+            if not pos_only:
+                # unbatch v0/vt traj
+                all_step_v0 = [[] for _ in range(n_data)]
+                for v0 in r['v0_traj']:
+                    v0_arr = v0.cpu().numpy()
+                    for k in range(n_data):
+                        all_step_v0[k].append(v0_arr[ligand_cum_atoms[k]:ligand_cum_atoms[k + 1]])
+                all_pred_v0_traj += [np.stack(sv) for sv in all_step_v0]
 
-            all_step_vt = [[] for _ in range(n_data)]
-            for vt in r['vt_traj']:
-                vt_arr = vt.cpu().numpy()
-                for k in range(n_data):
-                    all_step_vt[k].append(vt_arr[ligand_cum_atoms[k]:ligand_cum_atoms[k + 1]])
-            all_pred_vt_traj += [np.stack(sv) for sv in all_step_vt]
+                all_step_vt = [[] for _ in range(n_data)]
+                for vt in r['vt_traj']:
+                    vt_arr = vt.cpu().numpy()
+                    for k in range(n_data):
+                        all_step_vt[k].append(vt_arr[ligand_cum_atoms[k]:ligand_cum_atoms[k + 1]])
+                all_pred_vt_traj += [np.stack(sv) for sv in all_step_vt]
 
         time_list.append(time.time() - t1)
 
@@ -224,6 +229,28 @@ def get_logger(name, log_dir=None):
     return logger
 
 
+def resolve_lmdb_path(data_cfg):
+    candidate = (
+        data_cfg.get('lmdb_path')
+        or data_cfg.get('lmdb')
+        or data_cfg.get('path')
+    )
+    if candidate is None:
+        return './best_affinity_complex_processed.lmdb'
+    if os.path.exists(candidate):
+        return candidate
+    lmdb_candidate = f'{candidate}.lmdb'
+    if os.path.exists(lmdb_candidate):
+        return lmdb_candidate
+    return candidate
+
+
+def get_model_config(ckpt_config):
+    if isinstance(ckpt_config, dict) and 'model' in ckpt_config:
+        return SimpleNamespace(**ckpt_config['model'])
+    return SimpleNamespace(**ckpt_config)
+
+
 # ──────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────
@@ -257,11 +284,13 @@ if __name__ == '__main__':
     # ── data config (yml → CLI override 순서) ──
     data_section = sample_cfg.get('data', {})
     split_path = data_section.get('split', None)
-    lmdb_path  = data_section.get('lmdb', './best_affinity_complex_processed.lmdb')
+    lmdb_path = resolve_lmdb_path(data_section)
 
     sample_section = sample_cfg.get('sample', {})
     sample_num_samples = sample_section.get('num_samples', 100)
     sample_num_steps   = sample_section.get('num_steps', None)
+    sample_pos_only    = sample_section.get('pos_only', False)
+    sample_center_mode = sample_section.get('center_pos_mode', None)
     sample_num_atoms   = sample_section.get('sample_num_atoms', 'prior')
     sample_seed        = sample_section.get('seed', 2021)
 
@@ -288,7 +317,7 @@ if __name__ == '__main__':
     # ── Load checkpoint ──
     logger.info(f'Loading checkpoint: {ckpt_path}')
     ckpt = torch.load(ckpt_path, map_location=args.device)
-    model_cfg = SimpleNamespace(**ckpt['config'])
+    model_cfg = get_model_config(ckpt['config'])
 
     # ── Build model ──
     transform, protein_featurizer, ligand_featurizer = get_transforms()
@@ -328,7 +357,8 @@ if __name__ == '__main__':
         batch_size=args.batch_size,
         device=args.device,
         num_steps=sample_num_steps,
-        center_pos_mode=model_cfg.center_pos_mode,
+        pos_only=sample_pos_only,
+        center_pos_mode=sample_center_mode or model_cfg.center_pos_mode,
         sample_num_atoms=sample_num_atoms,
     )
     logger.info(f'Sampling done. Time per batch: {np.mean(time_list):.2f}s')

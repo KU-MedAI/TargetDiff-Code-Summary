@@ -53,6 +53,22 @@ def get_logger(name, log_dir):
     return logger
 
 
+def resolve_lmdb_path(data_cfg):
+    candidate = (
+        data_cfg.get('lmdb_path')
+        or data_cfg.get('lmdb')
+        or data_cfg.get('path')
+    )
+    if candidate is None:
+        return './data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final.lmdb'
+    if os.path.exists(candidate):
+        return candidate
+    lmdb_candidate = f'{candidate}.lmdb'
+    if os.path.exists(lmdb_candidate):
+        return lmdb_candidate
+    return candidate
+
+
 # ──────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────
@@ -75,12 +91,9 @@ if __name__ == '__main__':
     model_dict = yml['model']
     train_dict = yml['train']
 
-    # config.yml의 data.lmdb_path 또는 기본값 사용
-    lmdb_path = yml.get('data', {}).get(
-        'lmdb_path',
-        './data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final.lmdb'
-    )
-    split_path = yml.get('data', {}).get('split', None)
+    data_dict = yml.get('data', {})
+    lmdb_path = resolve_lmdb_path(data_dict)
+    split_path = data_dict.get('split', None)
 
     model_cfg = SimpleNamespace(**model_dict)
     train_cfg = SimpleNamespace(**train_dict)
@@ -272,8 +285,6 @@ if __name__ == '__main__':
     # ── Main loop ──
     try:
         best_loss, best_iter = None, None
-        early_stop_patience = 50  # val_freq=100이면 5000 iter 개선 없으면 종료
-        no_improve_count = 0
 
         for it in range(1, train_cfg.max_iters + 1):
             train(it)
@@ -282,23 +293,18 @@ if __name__ == '__main__':
                 if best_loss is None or val_loss < best_loss:
                     logger.info(f'[Validate] Best val loss achieved: {val_loss:.6f}')
                     best_loss, best_iter = val_loss, it
-                    no_improve_count = 0
                     ckpt_path = os.path.join(ckpt_dir, f'{it}.pt')
                     torch.save({
-                        'config':    model_dict,
+                        'config':    yml,
                         'model':     model.state_dict(),
                         'optimizer': optimizer.state_dict(),
                         'scheduler': scheduler.state_dict(),
                         'iteration': it,
                     }, ckpt_path)
                 else:
-                    no_improve_count += 1
                     logger.info(
-                        f'[Validate] Val loss not improved ({no_improve_count}/{early_stop_patience}). '
+                        f'[Validate] Val loss not improved. '
                         f'Best: {best_loss:.6f} at iter {best_iter}'
                     )
-                    if no_improve_count >= early_stop_patience:
-                        logger.info(f'[Early Stop] No improvement for {early_stop_patience} validations. Stopping.')
-                        break
     except KeyboardInterrupt:
         logger.info('Terminating...')

@@ -199,7 +199,6 @@ def get_transforms():
         protein_featurizer,
         ligand_featurizer,
         LigandCountNeighbors(),   # 리간드 원자의 결합 수와 DEGREE 계산
-        NormalizePosition(),   # protein centroid를 중심으로 Pocket, Ligand Center화.
     ])
     return transform, protein_featurizer, ligand_featurizer
 
@@ -219,4 +218,5 @@ if __name__ == '__main__':
     print(f'  ligand_bond_index:        {sample.ligand_bond_index.shape}')
     print(f'  ligand_num_neighbors:     {sample.ligand_num_neighbors.shape}')
     print(f'  ligand_atom_valence:      {sample.ligand_atom_valence.shape}')
-    print(f'  center_of_mass_offset:    {sample.center_of_mass_offset.shape}')
+    if hasattr(sample, 'center_of_mass_offset'):
+        print(f'  center_of_mass_offset:    {sample.center_of_mass_offset.shape}')

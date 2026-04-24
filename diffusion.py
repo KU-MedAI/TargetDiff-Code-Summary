@@ -426,7 +426,7 @@ class ScorePosNet3D(nn.Module):
         pred_ligand_v = preds['pred_ligand_v']
         pred_pos_noise = pred_ligand_pos - ligand_pos_perturbed
 
-        # 5. position loss (compute_pos_Lt)
+        # 5. position loss
         if self.model_mean_type == 'noise':
             pos0_from_e = self._predict_x0_from_eps(
                 xt=ligand_pos_perturbed, eps=pred_pos_noise, t=time_step, batch=batch_ligand)
@@ -437,8 +437,14 @@ class ScorePosNet3D(nn.Module):
                 x0=pred_ligand_pos, xt=ligand_pos_perturbed, t=time_step, batch=batch_ligand)
         else:
             raise ValueError(f'Unknown model_mean_type: {self.model_mean_type}')
-        loss_pos = self.compute_pos_Lt(
-            pos_model_mean, ligand_pos, ligand_pos_perturbed, time_step, batch_ligand).mean()
+
+        if self.model_mean_type == 'C0':
+            target, pred = ligand_pos, pred_ligand_pos
+        elif self.model_mean_type == 'noise':
+            target, pred = pos_noise, pred_pos_noise
+        else:
+            raise ValueError(f'Unknown model_mean_type: {self.model_mean_type}')
+        loss_pos = scatter_mean(((pred - target) ** 2).sum(-1), batch_ligand, dim=0).mean()
 
         # 6. atom type loss (KL)
         log_ligand_v_recon = F.log_softmax(pred_ligand_v, dim=-1)
