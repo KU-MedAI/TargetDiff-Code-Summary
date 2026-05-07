@@ -93,7 +93,7 @@ def compose_context(h_protein, h_ligand, pos_protein, pos_ligand, batch_protein,
 
 
 # ──────────────────────────────────────────────
-# Hybrid Edge Construction
+# Hybrid Edge Construction (실제론 이거 안쓰고, 밑에있는 knn 사용함)
 # ──────────────────────────────────────────────
 
 def hybrid_edge_connection(ligand_pos, protein_pos, k, ligand_index, protein_index): # ligand-ligand, ligand-protein KNN 그래프 생성 (엣지생성)

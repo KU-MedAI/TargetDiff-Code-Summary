@@ -1,5 +1,5 @@
 model:
-  checkpoint: /scratch/x3317a09/scripts_origindata/logs_diffusion/targetdiff/checkpoints/84000.pt
+  checkpoint: ./logs_diffusion_full/targetdiff_cjkim_full_gpu/checkpoints/62000.pt
 
 data:
   split: ./data/crossdocked_pocket10_pose_split.pt

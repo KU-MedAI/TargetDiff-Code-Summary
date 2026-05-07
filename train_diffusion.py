@@ -209,10 +209,10 @@ if __name__ == '__main__':
         for _ in range(train_cfg.n_acc_batch):
             batch = next(train_iterator).to(args.device)
 
-            protein_noise = torch.randn_like(batch.protein_pos) * train_cfg.pos_noise_std
-            gt_protein_pos = batch.protein_pos + protein_noise
+            protein_noise = torch.randn_like(batch.protein_pos) * train_cfg.pos_noise_std   # 노이즈 생성하고, 0.1 곱해서 노이즈 크기 조절
+            gt_protein_pos = batch.protein_pos + protein_noise   # 노이즈 추가
 
-            results = model.get_diffusion_loss(
+            results = model.get_diffusion_loss(   # diffusion.py로 진입 -> get_diffusion_loss 함수 호출
                 protein_pos=gt_protein_pos,
                 protein_v=batch.protein_atom_feature.float(),
                 batch_protein=batch.protein_element_batch,
@@ -223,7 +223,7 @@ if __name__ == '__main__':
             loss = results['loss'] / train_cfg.n_acc_batch
             loss.backward()
 
-        orig_grad_norm = clip_grad_norm_(model.parameters(), train_cfg.max_grad_norm)
+        orig_grad_norm = clip_grad_norm_(model.parameters(), train_cfg.max_grad_norm)   # clip_grad_norm_ : gradient 폭주 막는 torch 내장함수
         optimizer.step()
 
         if it % train_report_iter == 0:

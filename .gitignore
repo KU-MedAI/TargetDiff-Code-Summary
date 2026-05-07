@@ -1,6 +1,27 @@
-data/
-sampling_results/
+# Python caches
 __pycache__/
-*.pyc
-logs_diffusion/
+*.py[cod]
+
+# Local datasets and processed LMDB files
+data/
 datasets/data/
+*.lmdb
+
+# Training logs and checkpoints
+logs_diffusion/
+logs_diffusion*/
+*.pt
+
+# Sampling outputs and archived artifacts
+sampling_results/
+sampling_results*/
+targetdiff_eval_meta_full_test100/
+sampling_results*.tar
+sampling_results*.tar.gz
+sampling_results*.tgz
+sampling_results*.zip
+
+# Runtime/generated configs and process logs
+sampling_runtime*.yml
+*.log
+*.pid

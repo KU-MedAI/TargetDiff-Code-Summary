@@ -69,6 +69,8 @@ def _get_bin_idx(space_size):
 def sample_atom_num(space_size):
     bin_idx = _get_bin_idx(space_size)
     num_atoms, probs = ATOM_NUM_BINS[bin_idx]
+    probs = np.asarray(probs, dtype=np.float64)
+    probs = probs / probs.sum()
     return int(np.random.choice(num_atoms, p=probs))
 
 
